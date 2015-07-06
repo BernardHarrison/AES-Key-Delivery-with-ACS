@@ -57,7 +57,7 @@ namespace ConsoleApplication6
         /// <param name="scope">The Realm configured in the ACS Relying Party Application</param>
         /// <param name="issuer">The ACS endpoint to send the token request to</param>
         /// <returns>An authentication token from ACS</returns>
-        public static string GetToken(string clientId, string clientSecret, Uri scope, Uri issuer)
+        public static string GetToken(string clientId, string clientSecret, string scope, string issuer)
         {
             string tokenToReturn = null;
 
@@ -66,14 +66,14 @@ namespace ConsoleApplication6
                 //
                 //  Create the authentication request to get a token
                 //
-                client.BaseAddress = issuer.AbsoluteUri;
+                client.BaseAddress = issuer;
 
                 var oauthRequestValues = new NameValueCollection
                 {
                     {"grant_type", "client_credentials"},
                     {"client_id", clientId},
                     {"client_secret", clientSecret},
-                    {"scope", scope.AbsoluteUri},
+                    {"scope", scope},
                 };
 
                 byte[] responseBytes = null;
@@ -152,7 +152,7 @@ namespace ConsoleApplication6
         /// <param name="scope">The Realm configured in the ACS Relying Party Application</param>
         /// <param name="signingKey">The TokenSigning Keyfrom the ACS Relying Party Application</param>
         /// <returns>A list containing a single policy restriction requiring the client to provide a token with the given parameters</returns>
-        private static List<ContentKeyAuthorizationPolicyRestriction> GetTokenRestriction(string name, Uri issuer, Uri scope, byte[] signingKey)
+        private static List<ContentKeyAuthorizationPolicyRestriction> GetTokenRestriction(string name, string issuer, string scope, byte[] signingKey)
         {
             TokenRestrictionTemplate tokenTemplate = new TokenRestrictionTemplate();
             tokenTemplate.Issuer = issuer;
@@ -187,8 +187,6 @@ namespace ConsoleApplication6
             string issuerString = ConfigurationManager.AppSettings["AcsEndpoint"];
             string scopeString = ConfigurationManager.AppSettings["AcsScope"];
             string signingKeyString = ConfigurationManager.AppSettings["AcsSigningKey"];
-            Uri issuer = new Uri(issuerString);
-            Uri scope = new Uri(scopeString);
             byte[] signingKey = Convert.FromBase64String(signingKeyString);
 
             //
@@ -202,7 +200,7 @@ namespace ConsoleApplication6
             //  The GetTokenRestriction method has all of the details on how the ACS parameters from the App.Config
             //  are used to configure the token validation logic associated with delivering the content key.
             //
-            List<ContentKeyAuthorizationPolicyRestriction> restrictions = GetTokenRestriction("Token Restriction using token from ACS", issuer, scope, signingKey);
+            List<ContentKeyAuthorizationPolicyRestriction> restrictions = GetTokenRestriction("Token Restriction using token from ACS", issuerString, scopeString, signingKey);
 
             IContentKey contentKey = SetupContentKey(context, restrictions);
 
@@ -211,7 +209,7 @@ namespace ConsoleApplication6
             //  using ACS to get an authentication token and using the token to download
             //  the Envelope key from the Key Delivery service.
             //
-            string authToken = GetToken(clientId, clientSecret, scope, issuer);
+            string authToken = GetToken(clientId, clientSecret, scopeString, issuerString);
 
             Uri keyUrl = contentKey.GetKeyDeliveryUrl(ContentKeyDeliveryType.BaselineHttp);
 
@@ -219,11 +217,20 @@ namespace ConsoleApplication6
             {
                 Console.WriteLine("Token=Bearer " + authToken);
                 client.Headers["Authorization"] = "Bearer " + authToken;
-                byte[] downloadedKeyValue = client.DownloadData(keyUrl);
-
-                Console.WriteLine("Content Key acquired successfully!");
+                byte[] downloadedKeyValue;
+                try
+                {
+                    downloadedKeyValue = client.DownloadData(keyUrl);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("\nContent Key acquired successfully!");
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("\nKey acquisition failed.\n{0}", ex.Message);
+                }
             }
-
+            Console.ResetColor();
             Console.ReadLine();
         }
     }
